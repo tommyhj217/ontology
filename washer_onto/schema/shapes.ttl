@@ -1,0 +1,64 @@
+@prefix wm:   <http://example.org/washer/onto#> .
+@prefix sh:   <http://www.w3.org/ns/shacl#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+
+# 구조 검증: "결정 기록이 빠짐없이 작성되었는가"
+# sh:Violation = 오류, sh:Warning = 경고
+
+wm:DecisionShape a sh:NodeShape ;
+    sh:targetClass wm:SelectionDecision ;
+    sh:property [
+        sh:path rdfs:label ; sh:minCount 1 ;
+        sh:message "결정 제목이 없습니다." ] ;
+    sh:property [
+        sh:path wm:chosenCandidate ; sh:minCount 1 ; sh:maxCount 1 ; sh:class wm:Candidate ;
+        sh:message "선정된 후보는 정확히 1개여야 하며 후보 목록에 있어야 합니다." ] ;
+    sh:property [
+        sh:path wm:hasCriterion ; sh:minCount 1 ;
+        sh:message "선정 기준이 하나도 기록되지 않았습니다." ] ;
+    sh:property [
+        sh:path wm:hasCandidate ; sh:minCount 2 ; sh:severity sh:Warning ;
+        sh:message "비교한 대안 후보가 없습니다(후보 2개 미만). 대안 검토 여부를 확인하세요." ] ;
+    sh:property [
+        sh:path wm:decidedBy ; sh:minCount 1 ; sh:severity sh:Warning ;
+        sh:message "결정자가 기록되지 않았습니다." ] ;
+    sh:property [
+        sh:path wm:reviewedBy ; sh:minCount 1 ; sh:severity sh:Info ;
+        sh:message "검토자(리뷰어)가 기록되지 않았습니다." ] ;
+    sh:property [
+        sh:path wm:decidedOn ; sh:minCount 1 ; sh:datatype xsd:date ; sh:severity sh:Info ;
+        sh:message "결정일이 기록되지 않았습니다." ] ;
+    sh:property [
+        sh:path wm:rationale ; sh:minCount 1 ; sh:severity sh:Warning ;
+        sh:message "선정 사유(서술)가 기록되지 않았습니다." ] .
+
+wm:CriterionShape a sh:NodeShape ;
+    sh:targetClass wm:Criterion ;
+    sh:property [
+        sh:path wm:weight ; sh:minExclusive 0 ; sh:maxCount 1 ;
+        sh:message "기준 가중치는 0보다 커야 합니다." ] ;
+    sh:property [
+        sh:path wm:operator ; sh:in ( ">=" "<=" ">" "<" "==" ) ; sh:maxCount 1 ;
+        sh:message "비교 연산자는 >=, <=, >, <, == 중 하나여야 합니다." ] ;
+    sh:sparql [
+        sh:message "연산자와 임계값은 함께 기록되어야 합니다." ;
+        sh:select """
+            PREFIX wm: <http://example.org/washer/onto#>
+            SELECT $this WHERE {
+                { $this wm:operator ?o . FILTER NOT EXISTS { $this wm:threshold ?t } }
+                UNION
+                { $this wm:threshold ?t . FILTER NOT EXISTS { $this wm:operator ?o } }
+            }""" ] .
+
+wm:EvaluationShape a sh:NodeShape ;
+    sh:targetClass wm:Evaluation ;
+    sh:property [
+        sh:path wm:ofCandidate ; sh:minCount 1 ; sh:maxCount 1 ; sh:class wm:Candidate ;
+        sh:message "평가가 후보 목록에 없는 대상을 가리킵니다." ] ;
+    sh:property [
+        sh:path wm:onCriterion ; sh:minCount 1 ; sh:maxCount 1 ; sh:class wm:Criterion ;
+        sh:message "평가가 기준 목록에 없는 기준을 가리킵니다." ] ;
+    sh:property [
+        sh:path wm:rating ; sh:minInclusive 1 ; sh:maxInclusive 5 ;
+        sh:message "평점은 1~5 범위여야 합니다." ] .

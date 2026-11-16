@@ -1,0 +1,60 @@
+# 예시 결정 기록 (가상의 데이터). 이 형식으로 작성해  python -m washer_onto add <파일>  로 등록한다.
+decisions:
+  - id: DD-모터-선정-2026
+    title: 드럼세탁기 24kg DD 모터 선정
+    project: 드럼 24kg 신모델
+    category: 모터
+    chosen: BLDC-A380
+    rationale: 필수 규격(효율·소음·토크)을 모두 만족하면서 단가가 목표 이내이고, 양산 공급 이력이 있어 선정.
+    decided_by: [김모터]
+    reviewed_by: [박검증]
+    decided_on: "2026-03-14"
+    source: 모터선정검토서_v3.docx
+    candidates:
+      - {name: BLDC-A380, maker: A전기}
+      - {name: BLDC-B410, maker: B모터스}
+      - {name: PMSM-C36, maker: C일렉}
+    criteria:
+      - {name: 효율, operator: ">=", threshold: 88, unit: "%", weight: 3, mandatory: true}
+      - {name: 탈수 소음, operator: "<=", threshold: 48, unit: dB, weight: 3, mandatory: true}
+      - {name: 최대 토크, operator: ">=", threshold: 38, unit: Nm, weight: 2, mandatory: true}
+      - {name: 단가, operator: "<=", threshold: 42000, unit: 원, weight: 2}
+      - {name: 공급 안정성, weight: 1, description: 양산 이력·이원화 가능성 정성 평가}
+    evaluations:
+      - {candidate: BLDC-A380, criterion: 효율, value: 90.5, evidence: [{type: 시험성적서, reference: TR-2026-0112}]}
+      - {candidate: BLDC-A380, criterion: 탈수 소음, value: 46, evidence: [{type: 시험성적서, reference: TR-2026-0115}]}
+      - {candidate: BLDC-A380, criterion: 최대 토크, value: 40, evidence: [{type: 사양서, reference: A380-DS-rev2}]}
+      - {candidate: BLDC-A380, criterion: 단가, value: 39500, evidence: [{type: 견적서, reference: QT-A-0301}]}
+      - {candidate: BLDC-A380, criterion: 공급 안정성, rating: 5, evidence: [{type: 회의록, reference: 구매회의-0305}]}
+      - {candidate: BLDC-B410, criterion: 효율, value: 91.2, evidence: [{type: 시험성적서, reference: TR-2026-0113}]}
+      - {candidate: BLDC-B410, criterion: 탈수 소음, value: 49.5, evidence: [{type: 시험성적서, reference: TR-2026-0116}]}
+      - {candidate: BLDC-B410, criterion: 최대 토크, value: 42}
+      - {candidate: BLDC-B410, criterion: 단가, value: 44800}
+      - {candidate: BLDC-B410, criterion: 공급 안정성, rating: 3}
+      - {candidate: PMSM-C36, criterion: 효율, value: 88.4}
+      - {candidate: PMSM-C36, criterion: 탈수 소음, value: 47.5}
+      - {candidate: PMSM-C36, criterion: 최대 토크, value: 36}
+      - {candidate: PMSM-C36, criterion: 단가, value: 36000}
+      - {candidate: PMSM-C36, criterion: 공급 안정성, rating: 4}
+
+  # 일부러 문제가 있는 결정: 검증(audit)에서 어떻게 잡히는지 보여준다.
+  - id: 댐퍼-선정-2026
+    title: 서스펜션 댐퍼 선정
+    project: 드럼 24kg 신모델
+    category: 댐퍼
+    chosen: FD-120
+    decided_by: [이진동]
+    decided_on: "2026-04-02"
+    candidates:
+      - {name: FD-120, maker: D댐퍼}
+      - {name: FD-150S, maker: E테크}
+    criteria:
+      - {name: 탈수 진동, operator: "<=", threshold: 0.8, unit: mm, weight: 3, mandatory: true}
+      - {name: 내구 수명, operator: ">=", threshold: 5000, unit: 회, weight: 2, mandatory: true}
+      - {name: 단가, operator: "<=", threshold: 3500, unit: 원, weight: 1}
+    evaluations:
+      - {candidate: FD-120, criterion: 탈수 진동, value: 0.95, evidence: [{type: 시험성적서, reference: TR-2026-0201}]}
+      - {candidate: FD-120, criterion: 단가, value: 2900}
+      - {candidate: FD-150S, criterion: 탈수 진동, value: 0.7, evidence: [{type: 시험성적서, reference: TR-2026-0202}]}
+      - {candidate: FD-150S, criterion: 내구 수명, value: 6200, evidence: [{type: 시험성적서, reference: TR-2026-0203}]}
+      - {candidate: FD-150S, criterion: 단가, value: 3400}

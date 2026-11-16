@@ -1,0 +1,144 @@
+@prefix wm:      <http://example.org/washer/onto#> .
+@prefix owl:     <http://www.w3.org/2002/07/owl#> .
+@prefix rdf:     <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs:    <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd:     <http://www.w3.org/2001/XMLSchema#> .
+@prefix prov:    <http://www.w3.org/ns/prov#> .
+@prefix skos:    <http://www.w3.org/2004/02/skos/core#> .
+@prefix dcterms: <http://purl.org/dc/terms/> .
+
+<http://example.org/washer/onto> a owl:Ontology ;
+    rdfs:label "세탁기 개발 모델 선정 의사결정 온톨로지"@ko ;
+    rdfs:comment "세탁기 개발 과정에서 부품·제품·알고리즘 모델을 어떤 기준과 근거로 선정했는지 기록하고 검증하기 위한 온톨로지. W3C PROV-O에 정렬."@ko ;
+    owl:versionInfo "0.1.0" .
+
+### ---------- 클래스 ----------
+
+wm:SelectionDecision a owl:Class ;
+    rdfs:subClassOf prov:Activity ;
+    rdfs:label "선정 의사결정"@ko , "Selection Decision"@en ;
+    rdfs:comment "여러 후보 중 하나의 모델을 선정한 의사결정 1건."@ko .
+
+wm:Candidate a owl:Class ;
+    rdfs:subClassOf prov:Entity ;
+    rdfs:label "후보 모델"@ko , "Candidate"@en ;
+    rdfs:comment "선정 검토 대상이 된 모델(부품 모델, 제품 모델, AI/제어 알고리즘 모델 등)."@ko .
+
+wm:Criterion a owl:Class ;
+    rdfs:label "선정 기준"@ko , "Criterion"@en ;
+    rdfs:comment "후보를 평가한 기준. 정량 기준은 연산자·임계값·단위를 가진다."@ko .
+
+wm:Evaluation a owl:Class ;
+    rdfs:label "평가"@ko , "Evaluation"@en ;
+    rdfs:comment "특정 후보를 특정 기준으로 평가한 결과(측정값 또는 1~5 평점)."@ko .
+
+wm:Evidence a owl:Class ;
+    rdfs:subClassOf prov:Entity ;
+    rdfs:label "근거 자료"@ko , "Evidence"@en ;
+    rdfs:comment "평가를 뒷받침하는 자료(시험성적서, 시뮬레이션, 사양서, 회의록 등)."@ko .
+
+wm:Person a owl:Class ;
+    rdfs:subClassOf prov:Agent ;
+    rdfs:label "담당자"@ko , "Person"@en .
+
+wm:Project a owl:Class ;
+    rdfs:label "개발 프로젝트"@ko , "Project"@en .
+
+wm:Category a owl:Class ;
+    rdfs:subClassOf skos:Concept ;
+    rdfs:label "선정 대상 분류"@ko , "Category"@en ;
+    rdfs:comment "모터, 댐퍼, 베어링, 인버터, AI 모델 등 선정 대상의 분류."@ko .
+
+### ---------- 객체 속성 ----------
+
+wm:forProject a owl:ObjectProperty ;
+    rdfs:domain wm:SelectionDecision ; rdfs:range wm:Project ;
+    rdfs:label "대상 프로젝트"@ko .
+
+wm:category a owl:ObjectProperty ;
+    rdfs:domain wm:SelectionDecision ; rdfs:range wm:Category ;
+    rdfs:label "분류"@ko .
+
+wm:hasCandidate a owl:ObjectProperty ;
+    rdfs:domain wm:SelectionDecision ; rdfs:range wm:Candidate ;
+    rdfs:label "후보"@ko .
+
+wm:chosenCandidate a owl:ObjectProperty , owl:FunctionalProperty ;
+    rdfs:subPropertyOf wm:hasCandidate ;
+    rdfs:domain wm:SelectionDecision ; rdfs:range wm:Candidate ;
+    rdfs:label "선정된 후보"@ko .
+
+wm:hasCriterion a owl:ObjectProperty ;
+    rdfs:domain wm:SelectionDecision ; rdfs:range wm:Criterion ;
+    rdfs:label "선정 기준"@ko .
+
+wm:hasEvaluation a owl:ObjectProperty ;
+    rdfs:domain wm:SelectionDecision ; rdfs:range wm:Evaluation ;
+    rdfs:label "평가"@ko .
+
+wm:ofCandidate a owl:ObjectProperty , owl:FunctionalProperty ;
+    rdfs:domain wm:Evaluation ; rdfs:range wm:Candidate ;
+    rdfs:label "평가 대상 후보"@ko .
+
+wm:onCriterion a owl:ObjectProperty , owl:FunctionalProperty ;
+    rdfs:domain wm:Evaluation ; rdfs:range wm:Criterion ;
+    rdfs:label "적용 기준"@ko .
+
+wm:hasEvidence a owl:ObjectProperty ;
+    rdfs:domain wm:Evaluation ; rdfs:range wm:Evidence ;
+    rdfs:label "근거"@ko .
+
+wm:decidedBy a owl:ObjectProperty ;
+    rdfs:subPropertyOf prov:wasAssociatedWith ;
+    rdfs:domain wm:SelectionDecision ; rdfs:range wm:Person ;
+    rdfs:label "결정자"@ko .
+
+wm:reviewedBy a owl:ObjectProperty ;
+    rdfs:subPropertyOf prov:wasAssociatedWith ;
+    rdfs:domain wm:SelectionDecision ; rdfs:range wm:Person ;
+    rdfs:label "검토자"@ko .
+
+### ---------- 데이터 속성 ----------
+
+wm:decidedOn a owl:DatatypeProperty ;
+    rdfs:domain wm:SelectionDecision ; rdfs:range xsd:date ; rdfs:label "결정일"@ko .
+wm:rationale a owl:DatatypeProperty ;
+    rdfs:domain wm:SelectionDecision ; rdfs:range xsd:string ; rdfs:label "선정 사유"@ko .
+wm:sourceDocument a owl:DatatypeProperty ;
+    rdfs:domain wm:SelectionDecision ; rdfs:range xsd:string ; rdfs:label "출처 문서"@ko .
+
+wm:maker a owl:DatatypeProperty ;
+    rdfs:domain wm:Candidate ; rdfs:range xsd:string ; rdfs:label "제조사/출처"@ko .
+
+wm:operator a owl:DatatypeProperty ;
+    rdfs:domain wm:Criterion ; rdfs:range xsd:string ; rdfs:label "비교 연산자"@ko ;
+    rdfs:comment "'>=', '<=', '>', '<', '==' 중 하나."@ko .
+wm:threshold a owl:DatatypeProperty ;
+    rdfs:domain wm:Criterion ; rdfs:range xsd:double ; rdfs:label "임계값"@ko .
+wm:unit a owl:DatatypeProperty ;
+    rdfs:domain wm:Criterion ; rdfs:range xsd:string ; rdfs:label "단위"@ko .
+wm:weight a owl:DatatypeProperty ;
+    rdfs:domain wm:Criterion ; rdfs:range xsd:double ; rdfs:label "가중치"@ko .
+wm:mandatory a owl:DatatypeProperty ;
+    rdfs:domain wm:Criterion ; rdfs:range xsd:boolean ; rdfs:label "필수 여부"@ko .
+wm:higherIsBetter a owl:DatatypeProperty ;
+    rdfs:domain wm:Criterion ; rdfs:range xsd:boolean ; rdfs:label "값이 클수록 우수"@ko .
+
+wm:measuredValue a owl:DatatypeProperty ;
+    rdfs:domain wm:Evaluation ; rdfs:range xsd:double ; rdfs:label "측정값"@ko .
+wm:rating a owl:DatatypeProperty ;
+    rdfs:domain wm:Evaluation ; rdfs:range xsd:double ; rdfs:label "평점(1~5)"@ko .
+wm:note a owl:DatatypeProperty ;
+    rdfs:domain wm:Evaluation ; rdfs:range xsd:string ; rdfs:label "비고"@ko .
+
+wm:evidenceType a owl:DatatypeProperty ;
+    rdfs:domain wm:Evidence ; rdfs:range xsd:string ; rdfs:label "근거 유형"@ko .
+wm:reference a owl:DatatypeProperty ;
+    rdfs:domain wm:Evidence ; rdfs:range xsd:string ; rdfs:label "문서번호/링크"@ko .
+wm:quote a owl:DatatypeProperty ;
+    rdfs:domain wm:Evidence ; rdfs:range xsd:string ; rdfs:label "원문 인용"@ko .
+wm:quoteGrounded a owl:DatatypeProperty ;
+    rdfs:domain wm:Evidence ; rdfs:range xsd:boolean ; rdfs:label "인용이 원문에서 확인됨"@ko ;
+    rdfs:comment "LLM이 추출한 인용문이 실제 원문에 존재하는지 자동 대조한 결과."@ko .
+wm:order a owl:DatatypeProperty ;
+    rdfs:domain wm:Criterion ; rdfs:range xsd:integer ; rdfs:label "표시 순서"@ko .

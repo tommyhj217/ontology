@@ -1,0 +1,9 @@
+.env
+.venv/
+__pycache__/
+*.egg-info/
+.pytest_cache/
+# 사내 데이터는 저장소에 올리지 않는다
+data/
+okf_bundle/
+*.decisions.yaml
