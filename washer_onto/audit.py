@@ -4,6 +4,7 @@
 2) 정량 검증  - 선정 후보의 측정값을 기준 임계값과 대조
 3) 대안 비교  - 가중 점수로 다른 후보가 더 우수하지 않았는지 확인
 4) 근거 검증  - 평가에 근거 자료가 있는지, LLM 인용이 원문에 실재하는지
+5) 규칙 검증  - 개발자가 확정한 선정 규칙(rules.py)을 지켰는지
 
 LLM을 쓰지 않는 결정적(deterministic) 검사이므로 같은 입력에 항상 같은 판정이 나온다.
 """
@@ -165,6 +166,10 @@ def audit(kb: KB, decision_id: str) -> AuditReport:
                 report.add(WARNING, "NOT_BEST",
                            f"필수 기준을 모두 통과한 '{n}'의 가중 점수({s})가 선정 후보 '{rec.chosen}'({mine})보다 높습니다. "
                            f"기록되지 않은 선정 사유가 있는지 확인하세요.")
+
+    from .rules import check as check_rules
+    for sev, code, msg in check_rules(kb, rec):
+        report.add(sev, code, msg)
 
     return report.finalize()
 

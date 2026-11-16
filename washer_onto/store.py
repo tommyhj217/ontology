@@ -235,3 +235,132 @@ class KB:
     def query(self, sparql: str):
         """SPARQL SELECT/ASK 실행. 표준 prefix를 자동으로 붙인다."""
         return self.g.query(SPARQL_PREFIXES + sparql)
+
+
+# ---------- 선정 규칙·질문 저장 (KB 메서드로 붙인다) ----------
+
+from .models import Question, Revision, Rule  # noqa: E402
+
+
+def _remove_under(kb: KB, base: URIRef) -> None:
+    b = str(base)
+    for t in [t for t in kb.g if str(t[0]) == b or str(t[0]).startswith(b + "/")]:
+        kb.g.remove(t)
+
+
+def _ordered(kb: KB, node: URIRef, pred: URIRef) -> list[str]:
+    """'순번|값' 리터럴로 저장한 목록을 순서대로 복원."""
+    items = sorted((str(o).split("|", 1) for o in kb.g.objects(node, pred)), key=lambda x: int(x[0]))
+    return [v for _, v in items]
+
+
+def upsert_rule(self: KB, rule: Rule) -> str:
+    rule.id = slug(rule.id or f"{rule.category}-{rule.criterion}")
+    n, g = KBNS[f"rule/{rule.id}"], self.g
+    _remove_under(self, n)
+    g.add((n, RDF.type, WM.SelectionRule))
+    g.add((n, RDFS.label, Literal(f"{rule.category} · {rule.criterion}")))
+    g.add((n, WM.ruleCategory, self._shared("category", WM.Category, rule.category)))
+    g.add((n, WM.criterionName, Literal(rule.criterion)))
+    g.add((n, WM.ruleStatus, Literal(rule.status)))
+    g.add((n, WM.mandatory, Literal(bool(rule.mandatory))))
+    g.add((n, WM.weight, Literal(float(rule.weight))))
+    for pred, val in ((WM.operator, rule.operator), (WM.unit, rule.unit), (WM.statement, rule.statement),
+                      (WM.ruleRationale, rule.rationale), (WM.confirmedBy, rule.confirmed_by)):
+        if val:
+            g.add((n, pred, Literal(val)))
+    if rule.threshold is not None:
+        g.add((n, WM.threshold, Literal(float(rule.threshold))))
+    if rule.confirmed_on:
+        g.add((n, WM.confirmedOn, Literal(date.fromisoformat(rule.confirmed_on))))
+    for a in rule.aliases:
+        g.add((n, WM.alias, Literal(a)))
+    for s in rule.sources:
+        g.add((n, WM.ruleSource, Literal(s)))
+    for i, rev in enumerate(rule.history):
+        r = URIRef(f"{n}/rev/{i}")
+        g.add((r, RDF.type, WM.RuleRevision))
+        g.add((r, WM.revisedAt, Literal(rev.at)))
+        g.add((r, WM.revisedBy, Literal(rev.by)))
+        g.add((r, WM.revisionNote, Literal(rev.note)))
+        g.add((n, WM.hasRevision, r))
+    return rule.id
+
+
+def get_rule(self: KB, rule_id: str) -> Optional[Rule]:
+    n, g = KBNS[f"rule/{rule_id}"], self.g
+    if (n, RDF.type, WM.SelectionRule) not in g:
+        return None
+    confirmed_on = self._val(n, WM.confirmedOn)
+    revs = sorted(g.objects(n, WM.hasRevision), key=lambda r: int(str(r).rsplit("/", 1)[-1]))
+    return Rule(
+        id=rule_id, category=self._label(g.value(n, WM.ruleCategory)), criterion=self._val(n, WM.criterionName),
+        aliases=sorted(str(a) for a in g.objects(n, WM.alias)),
+        operator=self._val(n, WM.operator), threshold=self._val(n, WM.threshold), unit=self._val(n, WM.unit, ""),
+        mandatory=self._val(n, WM.mandatory, False), weight=self._val(n, WM.weight, 1.0),
+        statement=self._val(n, WM.statement, ""), rationale=self._val(n, WM.ruleRationale, ""),
+        status=self._val(n, WM.ruleStatus, "제안"), confirmed_by=self._val(n, WM.confirmedBy, ""),
+        confirmed_on=confirmed_on.isoformat() if confirmed_on else None,
+        sources=sorted(str(s) for s in g.objects(n, WM.ruleSource)),
+        history=[Revision(at=self._val(r, WM.revisedAt, ""), by=self._val(r, WM.revisedBy, ""),
+                          note=self._val(r, WM.revisionNote, "")) for r in revs])
+
+
+def rules(self: KB, status: Optional[str] = None, category: Optional[str] = None) -> list[Rule]:
+    base = str(KBNS) + "rule/"
+    out = [self.get_rule(str(s)[len(base):]) for s in self.g.subjects(RDF.type, WM.SelectionRule)]
+    return sorted((r for r in out if (status is None or r.status == status)
+                   and (category is None or r.category == category)), key=lambda r: r.id)
+
+
+def delete_rule(self: KB, rule_id: str) -> None:
+    _remove_under(self, KBNS[f"rule/{rule_id}"])
+    for q in self.questions(rule_id=rule_id):
+        _remove_under(self, KBNS[f"question/{q.id}"])
+
+
+def upsert_question(self: KB, q: Question) -> str:
+    if not q.id:
+        i = 1
+        while (KBNS[f"question/{q.rule_id}-q{i}"], RDF.type, WM.Question) in self.g:
+            i += 1
+        q.id = f"{q.rule_id}-q{i}"
+    n, g = KBNS[f"question/{q.id}"], self.g
+    _remove_under(self, n)
+    g.add((n, RDF.type, WM.Question))
+    g.add((n, WM.aboutRule, KBNS[f"rule/{q.rule_id}"]))
+    g.add((n, WM.questionKind, Literal(q.kind)))
+    g.add((n, WM.questionText, Literal(q.text)))
+    g.add((n, WM.questionStatus, Literal(q.status)))
+    for i, o in enumerate(q.options):
+        g.add((n, WM.option, Literal(f"{i}|{o}")))
+    for pred, val in ((WM.answer, q.answer), (WM.answeredBy, q.answered_by), (WM.answeredAt, q.answered_at)):
+        if val:
+            g.add((n, pred, Literal(val)))
+    return q.id
+
+
+def get_question(self: KB, qid: str) -> Optional[Question]:
+    n, g = KBNS[f"question/{qid}"], self.g
+    if (n, RDF.type, WM.Question) not in g:
+        return None
+    return Question(id=qid, rule_id=str(g.value(n, WM.aboutRule))[len(str(KBNS) + "rule/"):],
+                    kind=self._val(n, WM.questionKind, "open"), text=self._val(n, WM.questionText, ""),
+                    options=_ordered(self, n, WM.option), status=self._val(n, WM.questionStatus, "open"),
+                    answer=self._val(n, WM.answer, ""), answered_by=self._val(n, WM.answeredBy, ""),
+                    answered_at=self._val(n, WM.answeredAt, ""))
+
+
+def questions(self: KB, status: Optional[str] = None, rule_id: Optional[str] = None) -> list[Question]:
+    base = str(KBNS) + "question/"
+    out = [self.get_question(str(s)[len(base):]) for s in self.g.subjects(RDF.type, WM.Question)]
+    return sorted((q for q in out if (status is None or q.status == status)
+                   and (rule_id is None or q.rule_id == rule_id)), key=lambda q: q.id)
+
+
+def delete_question(self: KB, qid: str) -> None:
+    _remove_under(self, KBNS[f"question/{qid}"])
+
+
+for _f in (upsert_rule, get_rule, rules, delete_rule, upsert_question, get_question, questions, delete_question):
+    setattr(KB, _f.__name__, _f)

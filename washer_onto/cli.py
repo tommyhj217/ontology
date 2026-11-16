@@ -52,6 +52,21 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("export-okf", help="Google Open Knowledge Format 번들로 내보내기")
     p.add_argument("-o", "--out", default="okf_bundle")
 
+    p = sub.add_parser("rules", help="선정 규칙: 에이전트가 제안하고 개발자가 확정")
+    rs = p.add_subparsers(dest="rcmd", required=True)
+    rs.add_parser("mine", help="기존 결정에서 규칙 후보와 질문 만들기")
+    x = rs.add_parser("extract", help="문서에서 규칙 후보와 질문 만들기 (Azure OpenAI)")
+    x.add_argument("document", type=Path)
+    x = rs.add_parser("list", help="규칙 목록")
+    x.add_argument("--status", choices=["제안", "확정", "폐기"])
+    rs.add_parser("questions", help="답변을 기다리는 질문")
+    x = rs.add_parser("answer", help="질문에 답변 (선택지 번호 또는 자유 서술)")
+    x.add_argument("question_id")
+    x.add_argument("answer")
+    x.add_argument("--by", required=True, help="답변자 이름")
+    x = rs.add_parser("history", help="규칙 변경 이력")
+    x.add_argument("rule_id")
+
     p = sub.add_parser("delete", help="결정 삭제")
     p.add_argument("id")
 
@@ -106,6 +121,38 @@ def main(argv: list[str] | None = None) -> int:
     elif args.cmd == "export-okf":
         from .okf import export_bundle
         print("OKF 번들:", export_bundle(kb, args.out))
+
+    elif args.cmd == "rules":
+        from . import rules as R
+        if args.rcmd == "mine":
+            res = R.mine_rules(kb)
+            kb.save()
+            print(f"규칙 후보 {res['proposed']}건 제안/갱신, 사람이 정한 규칙 {res['kept']}건 유지, 대기 질문 {res['open_questions']}건")
+        elif args.rcmd == "extract":
+            from .extract import read_document
+            res = R.extract_rules(kb, read_document(args.document), source=args.document.name)
+            kb.save()
+            print(f"규칙 후보 {res['proposed']}건 제안, 대기 질문 {res['open_questions']}건")
+        elif args.rcmd == "list":
+            for r in kb.rules(status=args.status):
+                req = "필수" if r.mandatory else "권장"
+                print(f"[{r.status}] {r.id}\t{r.category} · {r.criterion}\t{r.spec()}\t{req}\t{r.confirmed_by}")
+        elif args.rcmd == "questions":
+            for q in kb.questions(status="open"):
+                print(f"{q.id}\n  {q.text}")
+                for i, o in enumerate(q.options, 1):
+                    print(f"    {i}) {o}")
+        elif args.rcmd == "answer":
+            q = kb.get_question(args.question_id)
+            text = args.answer
+            if q and text.isdigit() and 1 <= int(text) <= len(q.options):
+                text = q.options[int(text) - 1]
+            rule, summary = R.answer(kb, args.question_id, text, args.by)
+            kb.save()
+            print(f"[{rule.status}] {rule.statement}\n  변경: {summary}")
+        elif args.rcmd == "history":
+            for rev in kb.get_rule(args.rule_id).history:
+                print(f"{rev.at}  {rev.by}\n  {rev.note}")
 
     elif args.cmd == "delete":
         kb.delete(args.id)

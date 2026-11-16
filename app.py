@@ -105,8 +105,8 @@ def graph_dot(rec: DecisionRecord) -> str:
 
 st.title("세탁기 개발 모델 선정 온톨로지")
 st.caption("어떤 기준과 근거로 모델을 골랐는지 기록하고, 기준대로 골랐는지 검증합니다.")
-tab_list, tab_new, tab_doc, tab_ask, tab_out = st.tabs(
-    ["결정 목록·검증", "결정 등록", "문서에서 추출", "질의", "내보내기"])
+tab_list, tab_new, tab_doc, tab_rule, tab_ask, tab_out = st.tabs(
+    ["결정 목록·검증", "결정 등록", "문서에서 추출", "규칙·질문", "질의", "내보내기"])
 
 # ---------------- 결정 목록·검증 ----------------
 with tab_list:
@@ -156,10 +156,18 @@ with tab_new:
     chosen = st.selectbox("최종 선정 모델 *", names) if names else None
 
     st.markdown("**선정 기준** (정량 기준은 연산자·임계값 입력, 정성 기준은 비워두고 평점으로 평가)")
+    from washer_onto.rules import criteria_for
+    preset = criteria_for(kb, category.strip()) if category.strip() else []
+    if preset:
+        st.info(f"'{category.strip()}' 분류의 확정 규칙 {len(preset)}건을 기준에 미리 채웠습니다. 필요하면 수정하세요.")
     crit_df = st.data_editor(
-        pd.DataFrame({"기준": pd.Series(dtype=str), "연산자": pd.Series(dtype=str), "임계값": pd.Series(dtype=float),
-                      "단위": pd.Series(dtype=str), "가중치": pd.Series(dtype=float), "필수": pd.Series(dtype=bool)}),
-        num_rows="dynamic", width="stretch", key="crit",
+        pd.DataFrame({"기준": pd.Series([c.name for c in preset], dtype=str),
+                      "연산자": pd.Series([c.operator for c in preset], dtype=str),
+                      "임계값": pd.Series([c.threshold for c in preset], dtype=float),
+                      "단위": pd.Series([c.unit for c in preset], dtype=str),
+                      "가중치": pd.Series([c.weight for c in preset], dtype=float),
+                      "필수": pd.Series([c.mandatory for c in preset], dtype=bool)}),
+        num_rows="dynamic", width="stretch", key=f"crit-{category.strip() if preset else ''}",
         column_config={"연산자": st.column_config.SelectboxColumn(options=OPS),
                        "가중치": st.column_config.NumberColumn(default=1.0, min_value=0.1),
                        "필수": st.column_config.CheckboxColumn(default=False)})
@@ -235,6 +243,92 @@ with tab_doc:
                 st.session_state["draft"] = ""
             except Exception as err:
                 st.error(f"형식 오류: {err}")
+
+# ---------------- 규칙 ----------------
+with tab_rule:
+    from washer_onto import rules as R
+    st.markdown("에이전트가 결정과 문서에서 **규칙 후보**를 찾아 질문합니다. 담당 개발자가 답하면 규칙이 확정·수정·폐기되고, "
+                "확정된 규칙은 이후 모든 결정의 검증과 등록 폼에 적용됩니다.")
+    if st.session_state.get("rule_msg"):
+        st.success(st.session_state.pop("rule_msg"))
+    c1, c2 = st.columns(2)
+    with c1:
+        if st.button("기존 결정에서 규칙 찾기"):
+            res = R.mine_rules(kb)
+            kb.save()
+            st.session_state["rule_msg"] = f"규칙 후보 {res['proposed']}건을 제안/갱신했습니다. 대기 질문 {res['open_questions']}건."
+            st.rerun()
+    with c2:
+        rdoc = st.file_uploader("설계 기준서·회의록에서 규칙 찾기 (Azure OpenAI)", type=["txt", "md", "pdf", "docx"], key="ruledoc")
+        if st.button("문서에서 규칙 추출", disabled=rdoc is None or not llm.is_configured()):
+            from washer_onto.extract import read_document
+            try:
+                with tempfile.TemporaryDirectory() as tmp, st.spinner("추출 중…"):
+                    pth = Path(tmp) / ("doc" + Path(rdoc.name).suffix.lower())
+                    pth.write_bytes(rdoc.getvalue())
+                    res = R.extract_rules(kb, read_document(pth), source=rdoc.name)
+                kb.save()
+                st.session_state["rule_msg"] = f"문서에서 규칙 후보 {res['proposed']}건을 제안했습니다. 대기 질문 {res['open_questions']}건."
+                st.rerun()
+            except Exception as err:
+                st.error(f"추출 실패: {err}")
+
+    open_qs = kb.questions(status="open")
+    st.subheader(f"답변을 기다리는 질문 {len(open_qs)}건")
+    who = st.text_input("답변자 이름 *", key="answerer")
+    FREE = "직접 입력"
+    for q in open_qs:
+        rule = kb.get_rule(q.rule_id)
+        with st.container(border=True):
+            st.markdown(f"**{rule.category} · {rule.criterion}** — 현재 후보: `{rule.spec()}` · {'필수' if rule.mandatory else '권장'}")
+            st.write(q.text)
+            choice = st.radio("답변", q.options + [FREE], key=f"opt-{q.id}", index=None, label_visibility="collapsed") if q.options else FREE
+            free = ""
+            if choice == FREE:
+                free = st.text_area("답변 내용 (수치·조건·이유를 자유롭게 적으면 에이전트가 규칙에 반영합니다)", key=f"free-{q.id}")
+                if not llm.is_configured():
+                    st.caption("자유 서술 답변을 해석하려면 Azure OpenAI 설정(.env)이 필요합니다.")
+            if st.button("답변 제출", key=f"btn-{q.id}"):
+                if not who.strip():
+                    st.error("답변자 이름을 입력하세요.")
+                elif choice is None:
+                    st.error("답변을 선택하세요.")
+                else:
+                    try:
+                        with st.spinner("규칙 갱신 중…"):
+                            new_rule, summary = R.answer(kb, q.id, free if choice == FREE else choice, who)
+                        kb.save()
+                        st.session_state["rule_msg"] = f"[{new_rule.status}] {new_rule.statement} — 변경: {summary}"
+                        st.rerun()
+                    except Exception as err:
+                        st.error(f"반영 실패: {err}")
+
+    all_rules = kb.rules()
+    st.subheader(f"규칙 {len(all_rules)}건")
+    if all_rules:
+        mark = {"확정": "🟢 확정", "제안": "🟡 제안", "폐기": "⚪ 폐기"}
+        st.dataframe(pd.DataFrame([{
+            "상태": mark[r.status], "분류": r.category, "기준": r.criterion, "조건": r.spec(),
+            "구분": "필수" if r.mandatory else "권장", "규칙": r.statement, "이유": r.rationale,
+            "확정자": r.confirmed_by, "확정일": r.confirmed_on or ""} for r in all_rules]),
+            hide_index=True, width="stretch")
+        rid = st.selectbox("변경 이력 보기", [r.id for r in all_rules],
+                           format_func=lambda i: next(f"{r.category} · {r.criterion}" for r in all_rules if r.id == i))
+        sel = kb.get_rule(rid)
+        for rev in sel.history:
+            st.markdown(f"- `{rev.at}` **{rev.by}** — {rev.note}")
+        c1, c2 = st.columns(2)
+        if sel.status != "제안" and c1.button("다시 검토 대상으로 되돌리기 (제안 상태)"):
+            from washer_onto.models import Revision
+            sel.status, sel.confirmed_by, sel.confirmed_on = "제안", "", None
+            sel.history.append(Revision(at=R._now(), by=f"human:{who.strip() or '미상'}", note="제안 상태로 되돌림"))
+            kb.upsert_rule(sel)
+            kb.save()
+            st.rerun()
+        if c2.button("이 규칙 삭제"):
+            kb.delete_rule(rid)
+            kb.save()
+            st.rerun()
 
 # ---------------- 질의 ----------------
 with tab_ask:

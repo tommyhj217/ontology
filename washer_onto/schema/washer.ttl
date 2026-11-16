@@ -142,3 +142,55 @@ wm:quoteGrounded a owl:DatatypeProperty ;
     rdfs:comment "LLM이 추출한 인용문이 실제 원문에 존재하는지 자동 대조한 결과."@ko .
 wm:order a owl:DatatypeProperty ;
     rdfs:domain wm:Criterion ; rdfs:range xsd:integer ; rdfs:label "표시 순서"@ko .
+
+### ---------- 선정 규칙과 질문 ----------
+
+wm:SelectionRule a owl:Class ;
+    rdfs:label "선정 규칙"@ko , "Selection Rule"@en ;
+    rdfs:comment "특정 분류의 모델을 선정할 때 일반적으로 적용하는 기준. 에이전트가 제안하고 개발자가 확정한다."@ko .
+
+wm:Question a owl:Class ;
+    rdfs:label "확인 질문"@ko , "Question"@en ;
+    rdfs:comment "에이전트가 규칙을 확정하기 위해 개발자에게 묻는 질문."@ko .
+
+wm:RuleRevision a owl:Class ;
+    rdfs:subClassOf prov:Activity ;
+    rdfs:label "규칙 변경 이력"@ko .
+
+wm:ruleCategory a owl:ObjectProperty ;
+    rdfs:domain wm:SelectionRule ; rdfs:range wm:Category ; rdfs:label "적용 분류"@ko .
+wm:aboutRule a owl:ObjectProperty ;
+    rdfs:domain wm:Question ; rdfs:range wm:SelectionRule ; rdfs:label "대상 규칙"@ko .
+wm:hasRevision a owl:ObjectProperty ;
+    rdfs:domain wm:SelectionRule ; rdfs:range wm:RuleRevision ; rdfs:label "변경 이력"@ko .
+
+wm:criterionName a owl:DatatypeProperty ;
+    rdfs:domain wm:SelectionRule ; rdfs:range xsd:string ; rdfs:label "기준 이름"@ko ;
+    rdfs:comment "규칙이 다루는 기준 이름. wm:Criterion 의 rdfs:label 과 대응한다. 규칙도 wm:operator, wm:threshold, wm:unit, wm:mandatory, wm:weight 를 가진다."@ko .
+wm:alias a owl:DatatypeProperty ;
+    rdfs:domain wm:SelectionRule ; rdfs:range xsd:string ; rdfs:label "기준의 다른 이름"@ko .
+wm:statement a owl:DatatypeProperty ;
+    rdfs:domain wm:SelectionRule ; rdfs:range xsd:string ; rdfs:label "규칙 서술"@ko .
+wm:ruleRationale a owl:DatatypeProperty ;
+    rdfs:domain wm:SelectionRule ; rdfs:range xsd:string ; rdfs:label "규칙의 이유"@ko .
+wm:ruleStatus a owl:DatatypeProperty ;
+    rdfs:domain wm:SelectionRule ; rdfs:range xsd:string ; rdfs:label "규칙 상태"@ko ;
+    rdfs:comment "'제안', '확정', '폐기' 중 하나."@ko .
+wm:confirmedBy a owl:DatatypeProperty ;
+    rdfs:domain wm:SelectionRule ; rdfs:range xsd:string ; rdfs:label "확정자"@ko .
+wm:confirmedOn a owl:DatatypeProperty ;
+    rdfs:domain wm:SelectionRule ; rdfs:range xsd:date ; rdfs:label "확정일"@ko .
+wm:ruleSource a owl:DatatypeProperty ;
+    rdfs:domain wm:SelectionRule ; rdfs:range xsd:string ; rdfs:label "규칙의 출처(결정 ID·문서명)"@ko .
+
+wm:revisedAt a owl:DatatypeProperty ; rdfs:domain wm:RuleRevision ; rdfs:range xsd:string ; rdfs:label "변경 시각"@ko .
+wm:revisedBy a owl:DatatypeProperty ; rdfs:domain wm:RuleRevision ; rdfs:range xsd:string ; rdfs:label "변경 주체"@ko .
+wm:revisionNote a owl:DatatypeProperty ; rdfs:domain wm:RuleRevision ; rdfs:range xsd:string ; rdfs:label "변경 내용"@ko .
+
+wm:questionKind a owl:DatatypeProperty ; rdfs:domain wm:Question ; rdfs:range xsd:string ; rdfs:label "질문 유형"@ko .
+wm:questionText a owl:DatatypeProperty ; rdfs:domain wm:Question ; rdfs:range xsd:string ; rdfs:label "질문"@ko .
+wm:option a owl:DatatypeProperty ; rdfs:domain wm:Question ; rdfs:range xsd:string ; rdfs:label "선택지"@ko .
+wm:questionStatus a owl:DatatypeProperty ; rdfs:domain wm:Question ; rdfs:range xsd:string ; rdfs:label "질문 상태(open/answered)"@ko .
+wm:answer a owl:DatatypeProperty ; rdfs:domain wm:Question ; rdfs:range xsd:string ; rdfs:label "답변"@ko .
+wm:answeredBy a owl:DatatypeProperty ; rdfs:domain wm:Question ; rdfs:range xsd:string ; rdfs:label "답변자"@ko .
+wm:answeredAt a owl:DatatypeProperty ; rdfs:domain wm:Question ; rdfs:range xsd:string ; rdfs:label "답변 시각"@ko .

@@ -154,12 +154,41 @@ def export_bundle(kb: KB, out_dir: str | Path) -> Path:
         (out / "criteria" / f"{slug(name)}.md").write_text(_doc(front, "\n".join(body)), encoding="utf-8")
         crit_index.append(f"* [{name}]({slug(name)}.md) - {front['description']}")
 
+    rule_index = []
+    all_rules = kb.rules()
+    if all_rules:
+        (out / "rules").mkdir()
+    for r in all_rules:
+        front = {"type": "Selection Rule", "title": f"{r.category} · {r.criterion}",
+                 "description": r.statement, "tags": [r.category, r.status, "필수" if r.mandatory else "권장"],
+                 "generated": {"by": PRODUCER, "at": now}}
+        if r.status == "확정" and r.confirmed_by:
+            front["verified"] = [{"by": f"human:{slug(r.confirmed_by)}",
+                                  "at": f"{r.confirmed_on}T00:00:00Z" if r.confirmed_on else now}]
+        front["status"] = {"확정": "stable", "제안": "draft", "폐기": "deprecated"}[r.status]
+        if r.sources:
+            front["sources"] = [{"id": f"src{i + 1}", "title": src,
+                                 "resource": f"/decisions/{src}.md" if (out / "decisions" / f"{src}.md").exists() else src}
+                                for i, src in enumerate(r.sources)]
+        body = ["# 규칙\n", r.statement, "",
+                f"- **조건**: {r.spec()}", f"- **구분**: {'필수' if r.mandatory else '권장'}",
+                f"- **상태**: {r.status}" + (f" ({r.confirmed_by}, {r.confirmed_on})" if r.status == "확정" else ""),
+                f"- **기준 문서**: [{r.criterion}](/criteria/{slug(r.criterion)}.md)" if r.criterion in crit_use else "",
+                f"\n# 이유\n\n{r.rationale or '기록 없음'}", "\n# 변경 이력\n"]
+        body += [f"- {rev.at} · {rev.by} · {rev.note}" for rev in r.history]
+        (out / "rules" / f"{r.id}.md").write_text(_doc(front, "\n".join(b for b in body if b != "")), encoding="utf-8")
+        rule_index.append(f"* [{front['title']}]({r.id}.md) - [{r.status}] {r.statement}")
+    if all_rules:
+        (out / "rules" / "index.md").write_text("# 선정 규칙\n\n" + "\n".join(rule_index) + "\n", encoding="utf-8")
+
     (out / "decisions" / "index.md").write_text("# 선정 의사결정\n\n" + "\n".join(dec_index) + "\n", encoding="utf-8")
     (out / "criteria" / "index.md").write_text("# 선정 기준\n\n" + "\n".join(crit_index) + "\n", encoding="utf-8")
     (out / "index.md").write_text(
         '---\nokf_version: "0.2"\n---\n\n# 세탁기 개발 모델 선정 지식\n\n'
         f"* [decisions](decisions/index.md) - 모델 선정 의사결정 {len(records)}건과 검증 결과\n"
-        f"* [criteria](criteria/index.md) - 결정에 사용된 선정 기준 {len(crit_use)}개\n", encoding="utf-8")
+        f"* [criteria](criteria/index.md) - 결정에 사용된 선정 기준 {len(crit_use)}개\n"
+        + (f"* [rules](rules/index.md) - 개발자가 확인한 선정 규칙 {len(all_rules)}개 (제안·폐기 포함)\n" if all_rules else ""),
+        encoding="utf-8")
     (out / "log.md").write_text(
         f"# Directory Update Log\n\n## {now[:10]}\n"
         f"* **Update**: {PRODUCER} 가 지식베이스에서 번들을 재생성함 (결정 {len(records)}건).\n", encoding="utf-8")

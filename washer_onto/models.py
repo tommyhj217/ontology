@@ -88,3 +88,59 @@ class DecisionRecord(BaseModel):
 
 class ExtractionResult(BaseModel):
     decisions: list[DecisionRecord] = Field(default_factory=list)
+
+
+# ---------- 선정 규칙 (에이전트가 제안하고 개발자가 확정) ----------
+
+PROPOSED, CONFIRMED, REJECTED = "제안", "확정", "폐기"
+RuleStatus = Literal["제안", "확정", "폐기"]
+
+
+class Revision(BaseModel):
+    at: str = Field(description="변경 시각 ISO 8601")
+    by: str = Field(description="agent 또는 human:<이름>")
+    note: str = ""
+
+
+class Rule(BaseModel):
+    id: str = ""
+    category: str = Field(description="적용 대상 분류 (예: 모터)")
+    criterion: str = Field(description="기준 이름 (예: 탈수 소음)")
+    aliases: list[str] = Field(default_factory=list, description="같은 기준의 다른 이름")
+    operator: Optional[Operator] = None
+    threshold: Optional[float] = None
+    unit: str = ""
+    mandatory: bool = False
+    weight: float = 1.0
+    statement: str = Field("", description="규칙을 한 문장으로 서술")
+    rationale: str = Field("", description="규칙의 이유")
+    status: RuleStatus = "제안"
+    confirmed_by: str = ""
+    confirmed_on: Optional[str] = None
+    sources: list[str] = Field(default_factory=list, description="근거가 된 결정 ID·문서명")
+    history: list[Revision] = Field(default_factory=list)
+
+    def spec(self) -> str:
+        if self.operator and self.threshold is not None:
+            return f"{self.operator} {self.threshold:g}{self.unit}"
+        return "정성 평가"
+
+    def names(self) -> set[str]:
+        return {norm_name(n) for n in [self.criterion, *self.aliases]}
+
+
+class Question(BaseModel):
+    id: str = ""
+    rule_id: str
+    kind: Literal["scope", "conflict", "open"] = "open"
+    text: str
+    options: list[str] = Field(default_factory=list)
+    status: Literal["open", "answered"] = "open"
+    answer: str = ""
+    answered_by: str = ""
+    answered_at: str = ""
+
+
+def norm_name(name: str) -> str:
+    """기준 이름 비교용 정규화(공백·대소문자 무시)."""
+    return "".join(name.split()).lower()
