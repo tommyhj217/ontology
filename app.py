@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import io
+import json
 import os
 import tempfile
 import zipfile
@@ -105,8 +106,140 @@ def graph_dot(rec: DecisionRecord) -> str:
 
 st.title("세탁기 개발 모델 선정 온톨로지")
 st.caption("어떤 기준과 근거로 모델을 골랐는지 기록하고, 기준대로 골랐는지 검증합니다.")
-tab_list, tab_new, tab_doc, tab_rule, tab_ask, tab_out = st.tabs(
-    ["결정 목록·검증", "결정 등록", "문서에서 추출", "규칙·질문", "질의", "내보내기"])
+tab_chat, tab_list, tab_new, tab_doc, tab_rule, tab_ask, tab_out = st.tabs(
+    ["대화", "결정 목록·검증", "결정 등록", "문서에서 추출", "규칙·질문", "질의", "내보내기"])
+
+
+# ---------------- 대화 (에이전트) ----------------
+@st.cache_resource
+def get_agent():
+    """에이전트는 MCP 연결을 유지하므로 프로세스당 하나만 만든다."""
+    from washer_onto.agent.repl import make_agent
+    return make_agent()
+
+
+with tab_chat:
+    NEW = "(새 대화)"
+    ss = st.session_state
+    try:
+        agent = get_agent()
+    except Exception as err:
+        agent = None
+        st.warning(f"에이전트를 시작할 수 없습니다: {err}")
+    if agent:
+        if "_goto" in ss:                     # 새 세션을 만든 직후 선택 상자를 그 세션으로 옮긴다
+            ss["chat_sid"] = ss.pop("_goto")
+        c1, c2, c3 = st.columns([2, 4, 2])
+        chat_user = c1.text_input("사용자 이름 *", key="chat_user", help="대화 이력과 기억이 이름별로 관리됩니다.")
+        sessions = agent.store.list_sessions(chat_user) if chat_user.strip() else []
+        titles = {s["id"]: f"{s['title'] or '제목 없음'} · {s['updated_at'][:16].replace('T', ' ')}" for s in sessions}
+        if ss.get("chat_sid") not in titles:
+            ss["chat_sid"] = NEW
+        sid = c2.selectbox("대화", [NEW, *titles], format_func=lambda i: titles.get(i, i), key="chat_sid")
+        sid = None if sid == NEW else sid
+        names = [m.deployment for m in agent.cfg.models]
+        pinned = agent.store.session(sid)["pinned_model"] if sid else ss.get("new_pin", "")
+        choice = c3.selectbox("모델", ["자동 선택", *names], index=names.index(pinned) + 1 if pinned in names else 0,
+                              key=f"model-{sid}", help="자동 선택은 질문 난이도에 따라 고르고, 필요하면 상위 모델로 바꿉니다.")
+        choice = "" if choice == "자동 선택" else choice
+        if sid and choice != pinned:
+            agent.store.update_session(sid, pinned_model=choice)
+            agent.store.log(sid, "command", text=f"/model {choice or 'auto'}")
+        elif not sid:
+            ss["new_pin"] = choice
+
+        if not chat_user.strip():
+            st.info("사용자 이름을 입력하면 대화를 시작할 수 있습니다.")
+        else:
+            msgs = agent.store.messages(sid) if sid else []
+            results = {m["tool_call_id"]: m["content"] for m in msgs if m["role"] == "tool"}
+            upto = agent.store.session(sid)["summary_upto"] if sid else 0
+            for m in msgs:
+                if m["role"] == "tool":
+                    continue
+                with st.chat_message(m["role"]):
+                    for tc in m["tool_calls"]:
+                        with st.expander(f"도구 호출: {tc['name']}"):
+                            st.code(tc["arguments"], "json")
+                            st.text(results.get(tc["id"], "(승인 대기 또는 미실행)")[:3000])
+                    if m["content"]:
+                        st.markdown(m["content"])
+                    if m["role"] == "assistant":
+                        st.caption(f"{m['model']} · 입력 {m['prompt_tokens']} (캐시 {m['cached_tokens']}) · 출력 {m['completion_tokens']} 토큰"
+                                   + (" · 압축됨(요약으로 대체)" if m["id"] <= upto else ""))
+            for note in ss.pop("chat_notes", []):
+                st.caption(f"· {note}")
+
+            pending = agent._pending(sid) if sid else []
+            for p in pending:
+                with st.container(border=True):
+                    st.markdown(f"**승인 필요** — {p['source']} 도구 `{p['name']}`")
+                    st.code(p["arguments"], "json")
+                    b1, b2, _ = st.columns([1, 1, 6])
+                    decision = True if b1.button("승인", key=f"ok-{p['id']}", type="primary") else \
+                        False if b2.button("거절", key=f"no-{p['id']}") else None
+                    if decision is not None:
+                        try:
+                            with st.spinner("진행 중…"):
+                                ss["chat_notes"] = agent.resume(sid, {p["id"]: decision}).notes
+                        except Exception as err:
+                            ss["chat_notes"] = [f"오류: {err}"]
+                        st.rerun()
+
+            prompt = st.chat_input("질문을 입력하세요 (/help 로 명령어 보기)", key="chat_input")
+            if prompt:
+                if not sid:
+                    sid = agent.start(chat_user.strip())
+                    if ss.get("new_pin"):
+                        agent.store.update_session(sid, pinned_model=ss.pop("new_pin"))
+                    ss["_goto"] = sid
+                try:
+                    with st.spinner("생각 중…"):
+                        res = agent.send(sid, prompt)
+                    ss["chat_notes"] = res.notes + ([res.reply] if res.status in ("command", "max_steps") else [])
+                except Exception as err:
+                    ss["chat_notes"] = [f"오류: {type(err).__name__}: {err}"]
+                st.rerun()
+
+            if sid:
+                with st.expander("사용량 · 이력 · 기억"):
+                    for model, u in agent.store.usage(sid).items():
+                        spec = agent.cfg.model(model)
+                        cost = spec.cost(u["prompt"], u["completion"], u["cached"]) if spec else None
+                        st.write(f"**{model}** — 호출 {u['calls']}회 · 입력 {u['prompt']} (캐시 {u['cached']}) · 출력 {u['completion']} 토큰"
+                                 + (f" · 비용 약 {cost:.4f}" if cost is not None else ""))
+                    summary = agent.store.session(sid)["summary"]
+                    if summary:
+                        st.markdown("**압축된 이전 대화 요약**")
+                        st.text(summary)
+                    events = agent.store.events(sid)
+                    if events:
+                        st.markdown("**동작 이력**")
+                        st.dataframe(pd.DataFrame([{"시각": e["at"], "종류": e["kind"],
+                                                    "내용": json.dumps(e["detail"], ensure_ascii=False)} for e in events]),
+                                     hide_index=True, width="stretch")
+                    mems = agent.store.memories(chat_user.strip())
+                    if mems:
+                        st.markdown("**내 지시·선호 (모든 대화에 적용)**")
+                        for mem in mems:
+                            m1, m2 = st.columns([8, 1])
+                            m1.write(mem["text"])
+                            if m2.button("삭제", key=f"mem-{mem['id']}"):
+                                agent.store.forget(chat_user.strip(), mem["id"])
+                                st.rerun()
+                    if agent.mcp:
+                        st.markdown("**MCP 서버**")
+                        for name, status in agent.mcp.status().items():
+                            st.write(f"{name}: {status}")
+                    d1, d2, _ = st.columns([2, 2, 6])
+                    if d1.button("지금 압축"):
+                        info = agent.compact_now(sid)
+                        ss["chat_notes"] = [f"메시지 {info['messages_compacted']}개를 요약으로 압축했습니다." if info
+                                            else "압축할 이전 대화가 없습니다."]
+                        st.rerun()
+                    if d2.button("이 대화 삭제"):
+                        agent.store.delete_session(sid)
+                        st.rerun()
 
 # ---------------- 결정 목록·검증 ----------------
 with tab_list:

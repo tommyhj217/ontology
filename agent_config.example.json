@@ -1,0 +1,26 @@
+{
+  "models": [
+    {"deployment": "<작은 모델 배포 이름>", "tier": 1, "input_price": null, "cached_input_price": null, "output_price": null},
+    {"deployment": "<중간 모델 배포 이름>", "tier": 2, "input_price": null, "cached_input_price": null, "output_price": null},
+    {"deployment": "<큰 모델 배포 이름>", "tier": 3, "input_price": null, "cached_input_price": null, "output_price": null}
+  ],
+  "compact_at_tokens": 12000,
+  "keep_recent_turns": 3,
+  "tool_output_chars": 4000,
+  "max_steps": 8,
+  "mcp_servers": {
+    "예시-stdio": {
+      "enabled": false,
+      "command": "npx",
+      "args": ["-y", "<mcp 서버 패키지>"],
+      "env": {},
+      "auto_approve": ["<승인 없이 실행해도 되는 읽기 전용 도구 이름>"]
+    },
+    "예시-http": {
+      "enabled": false,
+      "url": "https://<사내 호스트>/mcp",
+      "headers": {"Authorization": "Bearer <토큰>"},
+      "auto_approve": []
+    }
+  }
+}

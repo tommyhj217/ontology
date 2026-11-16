@@ -18,6 +18,7 @@ dependencies = [
     "pandas>=2.0",
     "pypdf>=4.0",
     "python-docx>=1.1",
+    "mcp>=2.0",
 ]
 
 [project.optional-dependencies]
@@ -27,7 +28,7 @@ dev = ["pytest>=7.0"]
 washer-onto = "washer_onto.cli:main"
 
 [tool.setuptools]
-packages = ["washer_onto"]
+packages = ["washer_onto", "washer_onto.agent"]
 
 [tool.setuptools.package-data]
 washer_onto = ["schema/*.ttl"]

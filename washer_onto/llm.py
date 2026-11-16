@@ -106,3 +106,26 @@ def chat_structured(system: str, user: str, schema: Type[T]) -> T:
         resp = client.chat.completions.create(model=cfg["deployment"], messages=messages,
                                               response_format={"type": "json_object"})
         return schema.model_validate_json(resp.choices[0].message.content or "{}")
+
+
+def complete(model: str, messages: list[dict], tools: list[dict] | None = None) -> dict:
+    """도구 호출을 지원하는 채팅 호출. 에이전트가 쓰는 공통 형태로 정규화해 돌려준다.
+
+    반환: {"content": str, "tool_calls": [{"id", "name", "arguments"}], "usage": {"prompt", "completion", "cached"}}
+    """
+    cfg = config()
+    kwargs = {"model": model, "messages": messages}
+    if tools:
+        kwargs["tools"] = tools
+    resp = _client(cfg).chat.completions.create(**kwargs)
+    msg = resp.choices[0].message
+    usage = resp.usage
+    details = getattr(usage, "prompt_tokens_details", None)
+    return {
+        "content": msg.content or "",
+        "tool_calls": [{"id": tc.id, "name": tc.function.name, "arguments": tc.function.arguments or "{}"}
+                       for tc in (msg.tool_calls or [])],
+        "usage": {"prompt": getattr(usage, "prompt_tokens", 0) or 0,
+                  "completion": getattr(usage, "completion_tokens", 0) or 0,
+                  "cached": getattr(details, "cached_tokens", 0) or 0},
+    }

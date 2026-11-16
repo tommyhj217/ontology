@@ -67,10 +67,25 @@ def main(argv: list[str] | None = None) -> int:
     x = rs.add_parser("history", help="규칙 변경 이력")
     x.add_argument("rule_id")
 
+    p = sub.add_parser("chat", help="에이전트와 대화 (도구·MCP·압축·모델 자동 선택)")
+    p.add_argument("--user", required=True, help="사용자 이름 (세션·기억의 소유자)")
+    p.add_argument("--session", help="이어갈 세션 ID")
+    p.add_argument("--config", help="agent_config.json 경로")
+
+    p = sub.add_parser("sessions", help="내 대화 세션 목록")
+    p.add_argument("--user", required=True)
+
     p = sub.add_parser("delete", help="결정 삭제")
     p.add_argument("id")
 
     args = ap.parse_args(argv)
+    if args.cmd in ("chat", "sessions"):
+        from .agent import repl
+        if args.cmd == "chat":
+            repl.run(args.user, args.session, args.config)
+        else:
+            repl.list_sessions(args.user)
+        return 0
     kb = KB(args.kb)
 
     if args.cmd == "add":

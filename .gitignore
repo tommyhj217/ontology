@@ -7,3 +7,5 @@ __pycache__/
 data/
 okf_bundle/
 *.decisions.yaml
+# MCP 토큰이 들어갈 수 있다
+agent_config.json
